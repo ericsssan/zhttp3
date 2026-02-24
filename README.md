@@ -76,8 +76,8 @@ exe.root_module.addImport("http3", b.dependency("zhttp3", .{}).module("http3"));
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 1 | QPACK — static table, Huffman, integer/string encoding, encoder/decoder | 🔄 In progress |
-| 2 | HTTP/3 framing — DATA, HEADERS, SETTINGS, GOAWAY, control streams | ⬜ Planned |
+| 1 | QPACK — static table, Huffman, integer/string encoding, encoder/decoder | ✅ Done |
+| 2 | HTTP/3 framing — DATA, HEADERS, SETTINGS, GOAWAY, control streams | ✅ Done |
 | 3 | Server layer — comptime router, handler interface, middleware | ⬜ Planned |
 | 4 | Language integrations — C API, handler ABI, example handlers | ⬜ Planned |
 | 5 | WebAssembly — wasmtime embedding, hot reload | ⬜ Planned |
