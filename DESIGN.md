@@ -9,14 +9,18 @@
 zhttp3 implements the application layer of the HTTP/3 stack:
 
 ```
-┌─────────────────────────────┐
-│  src/server/   Server layer │  ← comptime router, handlers, middleware
-├─────────────────────────────┤
-│  src/http3/    HTTP/3       │  ← RFC 9114 framing
-│  src/qpack/    QPACK        │  ← RFC 9204 header compression
-├─────────────────────────────┤
-│  zquic         QUIC         │  ← RFC 9000/9001/9002 (separate library)
-└─────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  src/server/   Server layer                          │
+│                Handler(Request, Response)            │  ← protocol-agnostic
+│                comptime router, middleware, C API    │
+├──────────────────────────────────────────────────────┤
+│  src/http3/    HTTP/3 adapter          RFC 9114      │  ← translates between
+│  src/qpack/    QPACK                   RFC 9204      │    wire and HTTP types
+├──────────────────────────────────────────────────────┤
+│  zquic         QUIC transport          RFC 9000      │  ← separate library
+│                QUIC-TLS                RFC 9001      │
+│                Loss detection + CC     RFC 9002      │
+└──────────────────────────────────────────────────────┘
 ```
 
 | Layer    | RFC      | Responsibility                              |
@@ -84,7 +88,49 @@ MAX_PUSH_ID (0xD)  — flow control for server push
 
 ### Server Layer
 
-The server layer is opinionated: it makes decisions so users don't have to.
+The server layer is protocol-agnostic. Handlers have no knowledge of QUIC
+streams, HTTP/3 frames, or QPACK. The HTTP/3 layer translates between the
+wire protocol and HTTP-semantic types — handlers only ever see `Request` and
+`Response`.
+
+```
+src/server/    Handler(Request, Response)    ← protocol-agnostic
+                            ▲
+src/http3/     QUIC streams → Request        ← adapter
+               Response → QUIC streams
+                            ▲
+zquic          raw QUIC streams              ← transport
+```
+
+The HTTP/3 layer is responsible for:
+- Parsing HEADERS frames (QPACK-decoded) → `Request`
+- Reading DATA frames → request body
+- Encoding `Response` headers → HEADERS frame (QPACK-encoded)
+- Writing response body → DATA frames
+- Managing stream lifecycle
+
+The server layer never touches frame types, stream IDs, or QPACK state.
+
+#### Request and Response types
+
+```zig
+pub const Request = struct {
+    method:  []const u8,
+    path:    []const u8,
+    query:   []const u8,
+    headers: Headers,
+    body:    []const u8,
+};
+
+pub const Response = struct {
+    status:  u16,
+    headers: Headers,
+    body:    []const u8,
+};
+```
+
+No protocol details leak into these types. Handlers are independently
+testable — pass a `Request`, assert on the `Response`, no network stack needed.
 
 #### Comptime router
 
@@ -106,12 +152,11 @@ constant — not a data structure built at startup.
 #### Handler interface
 
 ```zig
-pub const Handler = *const fn (req: *Request, res: *Response) void;
+pub const Handler = *const fn (req: *const Request, res: *Response) void;
 ```
 
-Handlers receive typed `Request` and `Response` structs. No allocator in
-the handler signature — handlers operate on pre-allocated buffers provided
-by the server.
+Handlers operate on pre-allocated buffers provided by the server. No
+allocator in the handler signature — no allocation in the hot path.
 
 #### Middleware chain
 
