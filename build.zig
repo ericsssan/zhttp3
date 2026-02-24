@@ -29,8 +29,6 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(lib);
 
-    _ = server_mod;
-
     // Individual test modules — each pulls in its transitive imports.
     const varint_mod = b.createModule(.{
         .root_source_file = b.path("src/http3/varint.zig"),
@@ -72,4 +70,35 @@ pub fn build(b: *std.Build) void {
 
     const qpack_tests = b.addTest(.{ .root_module = qpack_mod });
     test_step.dependOn(&b.addRunArtifact(qpack_tests).step);
+
+    // Server layer modules.
+    const types_mod = b.createModule(.{
+        .root_source_file = b.path("src/server/types.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const router_mod = b.createModule(.{
+        .root_source_file = b.path("src/server/router.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const middleware_mod = b.createModule(.{
+        .root_source_file = b.path("src/server/middleware.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    // server_mod (root: src/server/root.zig) pulls in all server submodules
+    // transitively, including handlers/kv.zig.  Run all server tests via a
+    // single step; individual module steps cover types, router, middleware.
+    const server_tests = b.addTest(.{ .root_module = server_mod });
+    test_step.dependOn(&b.addRunArtifact(server_tests).step);
+
+    const types_tests = b.addTest(.{ .root_module = types_mod });
+    test_step.dependOn(&b.addRunArtifact(types_tests).step);
+
+    const router_tests = b.addTest(.{ .root_module = router_mod });
+    test_step.dependOn(&b.addRunArtifact(router_tests).step);
+
+    const middleware_tests = b.addTest(.{ .root_module = middleware_mod });
+    test_step.dependOn(&b.addRunArtifact(middleware_tests).step);
 }
