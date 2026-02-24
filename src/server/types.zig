@@ -39,10 +39,39 @@ pub const Request = struct {
     body: []const u8,
 };
 
+/// A server push promise: a resource the server will proactively push.
+/// Handlers add push promises to Response before (or alongside) the response.
+/// The HTTP/3 adapter layer translates these into PUSH_PROMISE frames and
+/// push streams on the wire.
+pub const PushPromise = struct {
+    method: []const u8,
+    path: []const u8,
+    headers: Headers,
+};
+
+pub const MAX_PUSH_PROMISES = 4;
+
 pub const Response = struct {
     status: u16 = 200,
     headers: Headers = .{},
     body: []const u8 = "",
+    push_promises: [MAX_PUSH_PROMISES]PushPromise = undefined,
+    push_count: usize = 0,
+
+    /// Enqueue a server push promise. Returns a pointer to the new slot so
+    /// the handler can add headers to it. Asserts push_count < MAX_PUSH_PROMISES.
+    pub fn addPush(self: *Response, method: []const u8, path: []const u8) *PushPromise {
+        std.debug.assert(self.push_count < MAX_PUSH_PROMISES);
+        const p = &self.push_promises[self.push_count];
+        self.push_count += 1;
+        p.* = .{ .method = method, .path = path, .headers = .{} };
+        return p;
+    }
+
+    /// Return a slice over the enqueued push promises.
+    pub fn pushes(self: *const Response) []const PushPromise {
+        return self.push_promises[0..self.push_count];
+    }
 };
 
 /// Protocol-agnostic request handler.
@@ -87,4 +116,32 @@ test "Response: default values" {
     try std_.testing.expectEqual(@as(u16, 200), res.status);
     try std_.testing.expectEqualStrings("", res.body);
     try std_.testing.expectEqual(@as(usize, 0), res.headers.len);
+    try std_.testing.expectEqual(@as(usize, 0), res.push_count);
+}
+
+test "Response.addPush: enqueues a push promise" {
+    const std_ = @import("std");
+    var res: Response = .{};
+    _ = res.addPush("GET", "/style.css");
+    try std_.testing.expectEqual(@as(usize, 1), res.push_count);
+    try std_.testing.expectEqualStrings("GET", res.pushes()[0].method);
+    try std_.testing.expectEqualStrings("/style.css", res.pushes()[0].path);
+}
+
+test "Response.addPush: returned pointer allows header mutation" {
+    const std_ = @import("std");
+    var res: Response = .{};
+    const p = res.addPush("GET", "/app.js");
+    p.headers.add("cache-control", "max-age=3600");
+    try std_.testing.expectEqualStrings("max-age=3600", res.pushes()[0].headers.get("cache-control").?);
+}
+
+test "Response.addPush: multiple pushes" {
+    const std_ = @import("std");
+    var res: Response = .{};
+    _ = res.addPush("GET", "/a.css");
+    _ = res.addPush("GET", "/b.js");
+    _ = res.addPush("GET", "/c.woff2");
+    try std_.testing.expectEqual(@as(usize, 3), res.push_count);
+    try std_.testing.expectEqualStrings("/b.js", res.pushes()[1].path);
 }

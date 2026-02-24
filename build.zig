@@ -50,6 +50,16 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const push_mod = b.createModule(.{
+        .root_source_file = b.path("src/http3/push.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const shutdown_mod = b.createModule(.{
+        .root_source_file = b.path("src/http3/shutdown.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     const test_step = b.step("test", "Run unit tests");
 
@@ -70,6 +80,12 @@ pub fn build(b: *std.Build) void {
 
     const qpack_tests = b.addTest(.{ .root_module = qpack_mod });
     test_step.dependOn(&b.addRunArtifact(qpack_tests).step);
+
+    const push_tests = b.addTest(.{ .root_module = push_mod });
+    test_step.dependOn(&b.addRunArtifact(push_tests).step);
+
+    const shutdown_tests = b.addTest(.{ .root_module = shutdown_mod });
+    test_step.dependOn(&b.addRunArtifact(shutdown_tests).step);
 
     // Server layer modules.
     const types_mod = b.createModule(.{

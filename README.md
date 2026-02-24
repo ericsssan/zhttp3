@@ -3,7 +3,7 @@
 HTTP/3 framing, QPACK header compression, and an opinionated server layer,
 built on [zquic](https://github.com/ericsssan/zquic).
 
-> **Status: pre-release / active development.** QPACK Phase 1 is in progress.
+> **Status: pre-release / active development.** Phases 1–4 complete.
 > Not ready for production use.
 
 ---
@@ -78,10 +78,8 @@ exe.root_module.addImport("http3", b.dependency("zhttp3", .{}).module("http3"));
 |-------|-------|--------|
 | 1 | QPACK — static table, Huffman, integer/string encoding, encoder/decoder | ✅ Done |
 | 2 | HTTP/3 framing — DATA, HEADERS, SETTINGS, GOAWAY, control streams | ✅ Done |
-| 3 | Server layer — comptime router, handler interface, middleware | ⬜ Planned |
-| 4 | Language integrations — C API, handler ABI, example handlers | ⬜ Planned |
-| 5 | WebAssembly — wasmtime embedding, hot reload | ⬜ Planned |
-| 6 | Server push + GOAWAY | ⬜ Planned |
+| 3 | Server layer — comptime router, handler interface, middleware | ✅ Done |
+| 4 | Server push + graceful shutdown — PUSH_PROMISE, push streams, GOAWAY state machine | ✅ Done |
 
 ---
 
