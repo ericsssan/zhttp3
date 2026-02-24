@@ -12,7 +12,7 @@ zhttp3 implements the application layer of the HTTP/3 stack:
 ┌──────────────────────────────────────────────────────┐
 │  src/server/   Server layer                          │
 │                Handler(Request, Response)            │  ← protocol-agnostic
-│                comptime router, middleware, C API    │
+│                comptime router, middleware           │
 ├──────────────────────────────────────────────────────┤
 │  src/http3/    HTTP/3 adapter          RFC 9114      │  ← translates between
 │  src/qpack/    QPACK                   RFC 9204      │    wire and HTTP types
@@ -27,7 +27,7 @@ zhttp3 implements the application layer of the HTTP/3 stack:
 |----------|----------|---------------------------------------------|
 | QPACK    | RFC 9204 | Header compression and decompression        |
 | HTTP/3   | RFC 9114 | Request/response framing over QUIC streams  |
-| Server   | —        | Router, handlers, middleware, C API         |
+| Server   | —        | Router, handlers, middleware                |
 
 zquic handles everything below: QUIC transport, TLS 1.3, loss recovery,
 congestion control, flow control, connection management.
@@ -81,7 +81,7 @@ DATA        (0x0)  — request/response body
 HEADERS     (0x1)  — QPACK-compressed header block
 CANCEL_PUSH (0x3)  — cancel a server push
 SETTINGS    (0x4)  — connection-level settings
-PUSH_PROMISE(0x5)  — server push (phase 2)
+PUSH_PROMISE(0x5)  — server push
 GOAWAY      (0x7)  — graceful shutdown signal
 MAX_PUSH_ID (0xD)  — flow control for server push
 ```
@@ -173,136 +173,7 @@ const chain = comptime Middleware.chain(.{
 
 ---
 
-## 3. Language Compatibility
-
-The transport performance comes from zquic. zhttp3 adds the handler layer,
-which can be written in any language at three levels.
-
-### Level 1: C API
-
-zhttp3 exposes a stable C API via `include/zhttp3.h`. Any language with C
-FFI gets the full stack — QUIC transport + HTTP/3 framing + routing.
-
-```c
-ZHttp3Server* zhttp3_server_new(const ZHttp3Config* config);
-void zhttp3_server_route(ZHttp3Server*, const char* method,
-                         const char* path, HandlerFn handler);
-int  zhttp3_server_listen(ZHttp3Server*, const char* addr, uint16_t port);
-void zhttp3_server_free(ZHttp3Server*);
-```
-
-| Language | Method              | Handler speed     |
-|----------|---------------------|-------------------|
-| C / C++  | #include + link     | full              |
-| Rust     | bindgen             | full              |
-| Go       | cgo                 | near-full         |
-| Python   | ctypes / cffi       | Python-speed      |
-| Node.js  | napi                | JS-speed          |
-
-Transport runs at full speed regardless. The handler runs at the speed of
-the chosen language.
-
-### Level 2: Handler ABI (.so plugin)
-
-A stable binary ABI lets handlers be compiled to `.so` and loaded at runtime.
-Any language that compiles to a shared library can implement it.
-
-```c
-// zhttp3.h — stable ABI contract
-typedef struct {
-    const char*    method;     size_t method_len;
-    const char*    path;       size_t path_len;
-    const char*    query;      size_t query_len;
-    const uint8_t* body;       size_t body_len;
-    const char**   header_names;
-    const char**   header_values;
-    size_t         header_count;
-} ZHttp3Request;
-
-typedef struct {
-    uint16_t       status;
-    const uint8_t* body;       size_t body_len;
-    const char**   header_names;
-    const char**   header_values;
-    size_t         header_count;
-} ZHttp3Response;
-
-typedef void (*HandlerFn)(const ZHttp3Request*, ZHttp3Response*, void* ctx);
-```
-
-| Language | Target              | Performance  |
-|----------|---------------------|--------------|
-| Zig      | .so native          | full         |
-| C / C++  | .so native          | full         |
-| Rust     | .so cdylib          | full         |
-| Go       | .so cgo             | near-full    |
-| Swift    | .so native          | near-full    |
-| Java     | .so GraalVM native  | good         |
-
-Hot reload: swap `.so` without restarting. Different routes can dispatch to
-handlers compiled from different languages simultaneously.
-
-### Level 3: WebAssembly
-
-Handlers compiled to `.wasm` run inside a wasmtime sandbox embedded in
-zhttp3. Any language that compiles to WASM is supported.
-
-```
-Handler (any language) → compile → handler.wasm → zhttp3 (wasmtime) → ~80–90% native
-```
-
-- Sandboxed: handler crash cannot kill the server
-- Hot reload: swap `.wasm` at runtime without restart
-- Same model as Cloudflare Workers, Fastly Compute, AWS Lambda@Edge
-- Cost: ~10–20% overhead vs native, ~5MB binary size increase (wasmtime)
-
-### Migration path
-
-```
-Step 1 — drop in zhttp3, keep existing handler language
-Step 2 — rewrite hot handlers (top 20% by traffic) in Zig/C/Rust
-Step 3 — full Zig (optional, for maximum handler performance)
-```
-
-Steps 1 and 2 are sufficient for most production workloads.
-
----
-
-## 4. Dependency Management
-
-### Zig projects
-
-`build.zig.zon`:
-```zig
-.dependencies = .{
-    .zhttp3 = .{
-        .url = "https://github.com/ericsssan/zhttp3/archive/refs/tags/v0.1.0.tar.gz",
-        .hash = "...",
-    },
-},
-```
-
-`build.zig`:
-```zig
-// Full server (most users)
-exe.root_module.addImport("zhttp3", b.dependency("zhttp3", .{}).module("server"));
-
-// HTTP/3 framing only (custom server logic)
-exe.root_module.addImport("http3", b.dependency("zhttp3", .{}).module("http3"));
-```
-
-zhttp3 pulls in zquic transitively. No other dependencies.
-
-### C/C++ projects
-
-```
-Build produces: libzhttp3.a (static), libzhttp3.so (dynamic)
-Usage:          #include "zhttp3.h" + link -lzhttp3 -lzquic
-```
-
----
-
-## 5. Implementation Roadmap
+## 3. Implementation Roadmap
 
 ### Phase 1: QPACK
 - Static table lookup (comptime perfect hash)
@@ -323,19 +194,7 @@ Usage:          #include "zhttp3.h" + link -lzhttp3 -lzquic
 - In-memory KV handler (benchmark endpoint)
 - **Milestone**: loopback benchmark, compare vs Node.js / Bun / Go fasthttp
 
-### Phase 4: Language integrations
-- zhttp3.h C header
-- Handler ABI stabilised
-- C, Rust, Go example handlers
-- **Milestone**: Go handler running on zhttp3
-
-### Phase 5: WebAssembly
-- wasmtime embedding
-- WASM handler loading and execution
-- Hot reload
-- **Milestone**: Rust handler compiled to .wasm running on zhttp3
-
-### Phase 6: Server push + GOAWAY
+### Phase 4: Server push + GOAWAY
 - Server push (PUSH_PROMISE frames)
 - Graceful shutdown via GOAWAY
 - **Milestone**: clean shutdown under load, no dropped requests
