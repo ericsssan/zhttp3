@@ -22,21 +22,20 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = "zhttp3",
         .root_module = http3_mod,
+        .linkage = .static,
     });
-
     b.installArtifact(lib);
 
-    _ = qpack_mod;
     _ = server_mod;
 
-    const unit_tests = b.addTest(.{
-        .root_module = http3_mod,
-    });
-
-    const run_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_tests.step);
+
+    const http3_tests = b.addTest(.{ .root_module = http3_mod });
+    test_step.dependOn(&b.addRunArtifact(http3_tests).step);
+
+    const qpack_tests = b.addTest(.{ .root_module = qpack_mod });
+    test_step.dependOn(&b.addRunArtifact(qpack_tests).step);
 }
