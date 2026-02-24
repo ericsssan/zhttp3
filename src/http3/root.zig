@@ -7,6 +7,7 @@ pub const settings = @import("settings.zig");
 pub const stream = @import("stream.zig");
 pub const push = @import("push.zig");
 pub const shutdown = @import("shutdown.zig");
+pub const connection = @import("connection.zig");
 
 pub const FrameType = frame.FrameType;
 pub const FrameHeader = frame.FrameHeader;
@@ -15,3 +16,4 @@ pub const SettingId = settings.SettingId;
 pub const StreamType = stream.StreamType;
 pub const Shutdown = shutdown.Shutdown;
 pub const ShutdownState = shutdown.ShutdownState;
+pub const Connection = connection.Connection;

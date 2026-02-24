@@ -22,6 +22,14 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // connection.zig (within http3_mod) imports qpack and server_types by name.
+    http3_mod.addImport("qpack", qpack_mod);
+    http3_mod.addImport("server_types", b.createModule(.{
+        .root_source_file = b.path("src/server/types.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+
     const lib = b.addLibrary(.{
         .name = "zhttp3",
         .root_module = http3_mod,
@@ -86,6 +94,21 @@ pub fn build(b: *std.Build) void {
 
     const shutdown_tests = b.addTest(.{ .root_module = shutdown_mod });
     test_step.dependOn(&b.addRunArtifact(shutdown_tests).step);
+
+    // connection.zig as standalone test module — needs named imports.
+    const connection_mod = b.createModule(.{
+        .root_source_file = b.path("src/http3/connection.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    connection_mod.addImport("qpack", qpack_mod);
+    connection_mod.addImport("server_types", b.createModule(.{
+        .root_source_file = b.path("src/server/types.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+    const connection_tests = b.addTest(.{ .root_module = connection_mod });
+    test_step.dependOn(&b.addRunArtifact(connection_tests).step);
 
     // Server layer modules.
     const types_mod = b.createModule(.{

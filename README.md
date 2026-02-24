@@ -3,7 +3,7 @@
 HTTP/3 framing, QPACK header compression, and an opinionated server layer,
 built on [zquic](https://github.com/ericsssan/zquic).
 
-> **Status: pre-release / active development.** Phases 1–4 complete.
+> **Status: pre-release / active development.** Phases 1–5 complete.
 > Not ready for production use.
 
 ---
@@ -80,6 +80,7 @@ exe.root_module.addImport("http3", b.dependency("zhttp3", .{}).module("http3"));
 | 2 | HTTP/3 framing — DATA, HEADERS, SETTINGS, GOAWAY, control streams | ✅ Done |
 | 3 | Server layer — comptime router, handler interface, middleware | ✅ Done |
 | 4 | Server push + graceful shutdown — PUSH_PROMISE, push streams, GOAWAY state machine | ✅ Done |
+| 5 | Connection layer — QPACK + framing + server dispatch wired into a single Connection type | ✅ Done |
 
 ---
 
